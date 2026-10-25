@@ -32,6 +32,13 @@
   .btn:disabled { opacity: .5; cursor: not-allowed; }
   #landing .note { font-size: 12px; margin-top: 18px; }
   #landing .note a, #status a { color: inherit; }
+  #landing .steps { text-align: left; color: var(--muted); margin: 0 0 20px; padding-left: 20px; }
+  #landing .steps li { margin: 4px 0; }
+  #landing .steps a { color: var(--fg); }
+  #bm { cursor: grab; }
+  .signin-only { display: none; }
+  .has-signin .signin-only { display: block; }
+  .has-signin .bookmarklet-only { display: none; }
   #menu { position: fixed; right: 12px; bottom: 12px; z-index: 5; display: none; gap: 6px; }
   #menu.show { display: flex; }
   #menu button { padding: 6px 12px; border-radius: 16px; border: 0; background: rgba(27,27,31,.9); color: var(--fg); font: 13px system-ui, sans-serif; cursor: pointer; }
@@ -41,13 +48,25 @@
 <div id="landing">
   <h1>Saved Grid</h1>
   <p>Your Reddit saved posts as a wall of pictures and looping videos. Everything runs in your browser.</p>
-  <button class="btn primary" id="signin">Sign in with Reddit</button>
-  <button class="btn" id="pickcsv">Use my data export (saved_posts.csv)</button>
+  <div class="signin-only">
+    <button class="btn primary" id="signin">Sign in with Reddit</button>
+    <button class="btn" id="pickcsv">Use my data export (saved_posts.csv)</button>
+  </div>
+  <div class="bookmarklet-only">
+    <a class="btn primary" id="bm" href="#" title="Drag me to your bookmarks bar">Saved Grid</a>
+    <ol class="steps">
+      <li>Drag the orange button to your bookmarks bar.</li>
+      <li>Open <a href="https://www.reddit.com" target="_blank" rel="noopener">reddit.com</a> while logged in and click the bookmark.</li>
+      <li>Pick your export's <code>saved_posts.csv</code> or use your live saved list, then click <b>Open grid</b>.</li>
+    </ol>
+    <button class="btn" id="openjson">Open a media.json file</button>
+  </div>
   <a class="btn" href="?demo">Try the demo</a>
-  <p class="note">Sign-in only asks to read your saved posts and username, and expires after an hour. Nothing is sent anywhere except Reddit.
+  <p class="note">Everything runs in your browser: the bookmark reads your saved posts using your own Reddit login and passes them straight to this page. Nothing is uploaded anywhere.
     The live list stops at your newest ~1000 saves; the <a href="https://www.reddit.com/settings/data-request" target="_blank" rel="noopener">data export</a> has them all.</p>
 </div>
 <input type="file" id="csv" accept=".csv" hidden>
+<input type="file" id="json" accept=".json,application/json" hidden>
 <div id="menu"><button id="loadcsv">Load export CSV</button><button id="signout">Sign out</button></div>
 <div id="grid"></div>
 <div id="status">Loading…</div>
@@ -211,8 +230,43 @@ csvInput.onchange = async () => {
   store.set('sg_ids', ids);
   loadFromReddit('csv');
 };
-document.getElementById('signout').onclick = () => { store.del('sg_token'); store.del('sg_ids'); location.href = redirectUri; };
-if (!clientId) document.getElementById('signin').disabled = document.getElementById('pickcsv').disabled = true;
+document.getElementById('signout').onclick = () => { ['sg_token', 'sg_ids', 'sg_posts'].forEach(store.del); location.href = redirectUri; };
+if (clientId) landing.classList.add('has-signin');
+else { document.getElementById('loadcsv').hidden = true; document.getElementById('signout').textContent = 'Start over'; }
+
+// Posts handed over by the bookmarklet or a media.json file. Only https media and reddit.com links get through.
+function cleanPosts(list) {
+  const https = (u) => typeof u === 'string' && u.startsWith('https://');
+  return (Array.isArray(list) ? list : []).map((p) => ({
+    id: String(p.id),
+    permalink: typeof p.permalink === 'string' && p.permalink.startsWith('https://www.reddit.com/') ? p.permalink : 'https://www.reddit.com/',
+    items: (p.items || []).filter((i) => (i.type === 'image' || i.type === 'video') && https(i.src))
+      .map((i) => ({ type: i.type, src: i.src, poster: https(i.poster) ? i.poster : undefined, w: +i.w || undefined, h: +i.h || undefined })),
+  })).filter((p) => p.items.length);
+}
+
+function showPosts(list) {
+  landing.classList.remove('show');
+  resetGrid();
+  posts = cleanPosts(list);
+  store.set('sg_posts', posts);
+  document.getElementById('menu').classList.add('show');
+  if (posts.length) layout(); else status.textContent = 'No pictures or videos found.';
+}
+
+const jsonInput = document.getElementById('json');
+document.getElementById('openjson').onclick = () => jsonInput.click();
+jsonInput.onchange = async () => {
+  try { const data = JSON.parse(await jsonInput.files[0].text()); showPosts(data.posts || data); }
+  catch { alert("That doesn't look like a Saved Grid media.json file."); }
+};
+
+// The bookmarklet is built from the same scripts this page uses, pointed back at this page.
+const bm = document.getElementById('bm');
+bm.onclick = (e) => { e.preventDefault(); alert('Drag this button to your bookmarks bar, then click it on reddit.com.'); };
+Promise.all(['extract.js', 'lookup.js'].map((f) => fetch(f).then((r) => r.text()))).then(([extract, lookup]) => {
+  bm.href = 'javascript:' + encodeURIComponent(`(function(){var SAVEDGRID_URL=${JSON.stringify(redirectUri)};\n${extract}\n${lookup}\n})()`);
+});
 
 const callback = Reddit.parseCallback(location.hash, store.get('sg_state'));
 if (callback) {
@@ -222,6 +276,18 @@ if (callback) {
   else { store.set('sg_token', { token: callback.token, expiresAt: callback.expiresAt }); loadFromReddit(store.get('sg_mode') || 'saved'); }
 } else if (new URLSearchParams(location.search).has('demo')) {
   loadJson('demo/media.json');
+} else if (new URLSearchParams(location.search).has('receive')) {
+  status.textContent = 'Waiting for your saved posts from the Reddit tab…';
+  window.addEventListener('message', (e) => {
+    if (/^https:\/\/(www|old|new)\.reddit\.com$/.test(e.origin) && e.data && e.data.type === 'savedgrid-posts') {
+      showPosts(e.data.posts);
+      history.replaceState(null, '', redirectUri);
+    }
+  });
+  if (window.opener) for (const o of ['https://www.reddit.com', 'https://old.reddit.com', 'https://new.reddit.com']) window.opener.postMessage('savedgrid-ready', o);
+  else status.textContent = 'Open this page with the Saved Grid bookmark on reddit.com.';
+} else if (store.get('sg_posts')) {
+  showPosts(store.get('sg_posts'));
 } else if (validToken()) {
   loadFromReddit(store.get('sg_mode') || 'saved');
 } else {
