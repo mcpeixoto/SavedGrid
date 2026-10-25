@@ -12,6 +12,8 @@ jobs:
         with:
           node-version: 22
       - run: node --test
+      - name: Page scripts parse
+        run: for f in config.js extract.js reddit.js; do node --check $f; done
       - name: Console script parses
         run: cat extract.js lookup.js > /tmp/console.js && node --check /tmp/console.js
       - name: Demo data is valid JSON
