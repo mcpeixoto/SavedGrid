@@ -1,0 +1,18 @@
+name: CI
+on:
+  push:
+    branches: [master]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test
+      - name: Console script parses
+        run: cat extract.js lookup.js > /tmp/console.js && node --check /tmp/console.js
+      - name: Demo data is valid JSON
+        run: node -e "JSON.parse(require('fs').readFileSync('demo/media.json'))"

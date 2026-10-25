@@ -1,0 +1,23 @@
+name: Bug report
+description: Something doesn't show or play the way it should
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you see instead?
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Example post
+      description: A public Reddit post link that shows the problem, if there is one.
+  - type: input
+    attributes:
+      label: Browser and OS
+      placeholder: Chrome 130 on macOS 15
+  - type: textarea
+    attributes:
+      label: Console errors
+      description: Anything red in DevTools → Console. Please remove anything personal.
+      render: text
