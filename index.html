@@ -67,7 +67,7 @@ function layout() {
   if (cols.length === n) return;
   grid.innerHTML = ''; cols = [];
   for (let i = 0; i < n; i++) { const c = el('div', { className: 'col' }); c.h = 0; grid.append(c); cols.push(c); }
-  const upTo = shown; shown = 0; renderMore(upTo);
+  const upTo = shown; shown = 0; renderMore(Math.max(upTo, BATCH));
 }
 
 function renderMore(count = BATCH) {
@@ -124,11 +124,15 @@ document.addEventListener('keydown', (e) => {
 let resizeT;
 window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(layout, 150); });
 
-fetch('media.json').then((r) => r.ok ? r.json() : Promise.reject(r.status)).then((data) => {
+// ?demo shows bundled sample media, so the grid can be tried without a Reddit export.
+const source = new URLSearchParams(location.search).has('demo') ? 'demo/media.json' : 'media.json';
+fetch(source).then((r) => r.ok ? r.json() : Promise.reject(r.status)).then((data) => {
   posts = data.posts || data;
-  if (!posts.length) { status.textContent = 'media.json has no posts yet.'; return; }
+  if (!posts.length) { status.textContent = `${source} has no posts yet.`; return; }
   layout();
-}).catch(() => { status.textContent = 'No media.json found. Run the lookup first (see README).'; });
+}).catch(() => {
+  status.innerHTML = 'No media.json found. Run the lookup first (see README), or <a href="?demo" style="color:inherit">try the demo</a>.';
+});
 </script>
 </body>
 </html>
