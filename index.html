@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Saved Grid</title>
+<style>
+  :root { --bg: #0d0d0f; --tile: #1b1b1f; --fg: #e8e8ea; --muted: #8a8a92; --gap: 6px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; }
+  #grid { display: flex; gap: var(--gap); padding: var(--gap); align-items: flex-start; }
+  .col { flex: 1; display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+  .tile { position: relative; background: var(--tile); border-radius: 6px; overflow: hidden; cursor: zoom-in; }
+  .tile img, .tile video { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .badge { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.6); padding: 1px 7px; border-radius: 10px; font-size: 12px; }
+  #status { color: var(--muted); text-align: center; padding: 40px 16px; }
+  #lb { position: fixed; inset: 0; background: rgba(0,0,0,.94); display: none; align-items: center; justify-content: center; z-index: 10; }
+  #lb.open { display: flex; }
+  #lb .media img, #lb .media video { max-width: 96vw; max-height: 88vh; display: block; }
+  #lb button { position: absolute; background: none; border: 0; color: #fff; font-size: 36px; cursor: pointer; padding: 16px; opacity: .8; }
+  #lb button:hover { opacity: 1; }
+  #prev { left: 0; } #next { right: 0; } #close { top: 0; right: 0; font-size: 28px; }
+  #lb .bar { position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; color: var(--muted); }
+  #lb .bar a { color: var(--fg); }
+</style>
+</head>
+<body>
+<div id="grid"></div>
+<div id="status">Loading…</div>
+<div id="lb">
+  <div class="media"></div>
+  <button id="prev" aria-label="Previous">‹</button>
+  <button id="next" aria-label="Next">›</button>
+  <button id="close" aria-label="Close">✕</button>
+  <div class="bar"><span class="count"></span> · <a target="_blank" rel="noopener">open on Reddit</a></div>
+</div>
+<script>
+const BATCH = 60;
+const grid = document.getElementById('grid');
+const status = document.getElementById('status');
+let posts = [], shown = 0, cols = [];
+
+function el(tag, props) { return Object.assign(document.createElement(tag), props); }
+
+function mediaEl(item, { autoplay }) {
+  if (item.type === 'video') {
+    const v = el('video', { muted: autoplay, loop: true, playsInline: true, preload: autoplay ? 'none' : 'auto', poster: item.poster || '' });
+    v.dataset.src = item.src;
+    if (!autoplay) { v.src = item.src; v.controls = true; v.autoplay = true; }
+    return v;
+  }
+  return el('img', { src: item.src, loading: 'lazy', decoding: 'async' });
+}
+
+// Videos only load and play while near the viewport, so hundreds of tiles stay cheap.
+const videoObs = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    const v = e.target;
+    if (e.isIntersecting) { if (!v.src) v.src = v.dataset.src; v.play().catch(() => {}); }
+    else v.pause();
+  }
+}, { rootMargin: '300px' });
+
+function layout() {
+  const n = Math.max(2, Math.round(window.innerWidth / 300));
+  if (cols.length === n) return;
+  grid.innerHTML = ''; cols = [];
+  for (let i = 0; i < n; i++) { const c = el('div', { className: 'col' }); c.h = 0; grid.append(c); cols.push(c); }
+  const upTo = shown; shown = 0; renderMore(upTo);
+}
+
+function renderMore(count = BATCH) {
+  const end = Math.min(posts.length, shown + count);
+  for (; shown < end; shown++) {
+    const p = posts[shown], item = p.items[0];
+    const ratio = item.w && item.h ? item.h / item.w : 1;
+    const tile = el('div', { className: 'tile' });
+    tile.style.aspectRatio = `1 / ${ratio}`;
+    const m = mediaEl(item, { autoplay: true });
+    tile.append(m);
+    if (p.items.length > 1) tile.append(el('span', { className: 'badge', textContent: `1/${p.items.length}` }));
+    tile.onclick = ((i) => () => openLb(i, 0))(shown);
+    const col = cols.reduce((a, b) => (b.h < a.h ? b : a)); // shortest column keeps newest near the top
+    col.append(tile); col.h += ratio;
+    if (m.tagName === 'VIDEO') videoObs.observe(m);
+  }
+  status.textContent = shown < posts.length ? '' : `${posts.length} saved posts`;
+}
+
+new IntersectionObserver((e) => { if (e[0].isIntersecting && shown < posts.length) renderMore(); }, { rootMargin: '1200px' })
+  .observe(status);
+
+// Lightbox
+const lb = document.getElementById('lb'), lbMedia = lb.querySelector('.media');
+let cur = { p: 0, i: 0 };
+function openLb(p, i) {
+  cur = { p, i };
+  const post = posts[p];
+  lbMedia.innerHTML = '';
+  lbMedia.append(mediaEl(post.items[i], { autoplay: false }));
+  lb.querySelector('.count').textContent = post.items.length > 1 ? `${i + 1} / ${post.items.length}` : `${p + 1} / ${posts.length}`;
+  lb.querySelector('a').href = post.permalink;
+  lb.classList.add('open');
+}
+function step(d) {
+  const post = posts[cur.p], i = cur.i + d;
+  if (i >= 0 && i < post.items.length) return openLb(cur.p, i);
+  const p = cur.p + d;
+  if (p >= 0 && p < posts.length) openLb(p, d > 0 ? 0 : posts[p].items.length - 1);
+}
+function closeLb() { lb.classList.remove('open'); lbMedia.innerHTML = ''; }
+document.getElementById('prev').onclick = (e) => { e.stopPropagation(); step(-1); };
+document.getElementById('next').onclick = (e) => { e.stopPropagation(); step(1); };
+document.getElementById('close').onclick = closeLb;
+lb.onclick = (e) => { if (e.target === lb) closeLb(); };
+document.addEventListener('keydown', (e) => {
+  if (!lb.classList.contains('open')) return;
+  if (e.key === 'Escape') closeLb();
+  if (e.key === 'ArrowLeft') step(-1);
+  if (e.key === 'ArrowRight') step(1);
+});
+
+let resizeT;
+window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(layout, 150); });
+
+fetch('media.json').then((r) => r.ok ? r.json() : Promise.reject(r.status)).then((data) => {
+  posts = data.posts || data;
+  if (!posts.length) { status.textContent = 'media.json has no posts yet.'; return; }
+  layout();
+}).catch(() => { status.textContent = 'No media.json found. Run the lookup first (see README).'; });
+</script>
+</body>
+</html>
