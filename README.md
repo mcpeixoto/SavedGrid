@@ -42,17 +42,19 @@ Open http://localhost:8734/?demo
 
 ## Use it online
 
-Open **https://mcpeixoto.github.io/SavedGrid/**, click **Sign in with Reddit**, and your saved posts appear. To get past Reddit's ~1000-item limit, click **Use my data export** and pick `saved_posts.csv` from your [Reddit data export](https://www.reddit.com/settings/data-request).
+1. Open **https://mcpeixoto.github.io/SavedGrid/** and drag the orange **Saved Grid** button to your bookmarks bar.
+2. Go to [reddit.com](https://www.reddit.com) while logged in and click the bookmark.
+3. Pick `saved_posts.csv` from your [Reddit data export](https://www.reddit.com/settings/data-request) (everything), or use your live saved list (newest ~1000), then click **Open grid**.
 
-Sign-in only asks to read your saved posts and username, and expires after an hour. The page has no server: it talks to Reddit straight from your browser and stores nothing.
+The bookmark reads your saved posts with your own Reddit login, the same way reddit.com does, and passes them straight to the grid tab. No API key, no server, nothing uploaded.
 
-### Hosting your own copy
+Prefer not to use a bookmark? Paste `extract.js` followed by `lookup.js` into the DevTools console on reddit.com instead; it shows the same panel.
 
-1. Fork the repo and turn on GitHub Pages (Settings → Pages → deploy from `master`, root).
-2. At [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps), create an app of type **installed app**, with your Pages URL (e.g. `https://you.github.io/SavedGrid/`) as the redirect URI.
-3. Put its client ID in [`config.js`](config.js). Installed apps have no secret, so the ID is safe to commit.
+### Sign in with Reddit (optional)
 
-## Use it offline, without signing in
+The page also supports Reddit sign-in, which needs an approved Reddit API app. Reddit now reviews new apps under its [Responsible Builder Policy](https://support.reddithelp.com/hc/en-us/articles/42728983564564-Responsible-Builder-Policy), so it's switched off until one is approved. To turn it on in your own copy: get an **installed app** approved at [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) with your page URL as the redirect URI, and put its client ID in [`config.js`](config.js).
+
+## Run it locally
 
 ### 1. Get your saved list (pick one)
 
@@ -68,7 +70,7 @@ Sign-in only asks to read your saved posts and username, and expires after an ho
    ```
 2. Open [reddit.com](https://www.reddit.com) while logged in, open DevTools → Console, paste, press Enter.
 3. In the panel that appears, pick `saved_posts.csv` or click **Use live saved list**.
-4. Move the downloaded `media.json` into the `SavedGrid` folder.
+4. Click **Download media.json** and move the file into the `SavedGrid` folder.
 
 The script runs in your own logged-in tab, asks Reddit for 100 posts per request, and pauses between requests to stay well inside rate limits.
 
@@ -88,7 +90,7 @@ saved_posts.csv ──► lookup.js (in your reddit.com tab) ──► media.jso
 ```
 
 - [`extract.js`](extract.js) turns one Reddit post into the media to show: images, Reddit-hosted videos, galleries, crossposts and imgur `.gifv` links. Text posts are skipped.
-- [`lookup.js`](lookup.js) is the in-browser panel that fetches posts and saves `media.json`.
+- [`lookup.js`](lookup.js) is the panel the bookmark opens on reddit.com: it fetches your posts and sends them to the grid (or saves `media.json`).
 - [`reddit.js`](reddit.js) handles Reddit sign-in and fetching for the online version.
 - [`index.html`](index.html) is the grid, lightbox and sign-in page.
 

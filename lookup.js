@@ -1,8 +1,11 @@
-// Paste lookup.console.js (built from extract.js + this file) into the DevTools console on reddit.com.
-// It looks up media for your saved posts using your own login and downloads media.json.
+// Runs on reddit.com, from the Saved Grid bookmarklet or pasted (after extract.js) into the DevTools console.
+// It looks up media for your saved posts using your own login, then hands them to the grid page.
 (() => {
+  if (document.getElementById('savedgrid-box')) return;
+  const gridUrl = typeof SAVEDGRID_URL !== 'undefined' ? SAVEDGRID_URL : 'https://mcpeixoto.github.io/SavedGrid/';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const box = document.createElement('div');
+  box.id = 'savedgrid-box';
   box.style.cssText = 'position:fixed;top:16px;right:16px;z-index:99999;background:#111;color:#eee;padding:14px;border-radius:8px;font:14px system-ui;max-width:320px;box-shadow:0 4px 20px #0008';
   box.innerHTML = '<b>Saved Grid lookup</b><p style="margin:8px 0">Pick saved_posts.csv from your export, or use your live saved list (newest 1000 only).</p>' +
     '<input type="file" accept=".csv"><br><br><button>Use live saved list</button> <button>Close</button><p class="s" style="margin:8px 0 0;color:#aaa"></p>';
@@ -21,11 +24,22 @@
   }
 
   function save(things) {
-    const posts = things.filter((t) => t.kind === 't3').map((t) => extractMedia(t.data)).filter(Boolean);
-    const blob = new Blob([JSON.stringify({ generated: new Date().toISOString(), posts })], { type: 'application/json' });
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'media.json' });
-    a.click();
-    s.textContent = `Done: ${posts.length} posts with media (of ${things.length}). Move media.json into the SavedGrid folder.`;
+    const data = { generated: new Date().toISOString(), posts: things.filter((t) => t.kind === 't3').map((t) => extractMedia(t.data)).filter(Boolean) };
+    s.textContent = `Done: ${data.posts.length} posts with media (of ${things.length}).`;
+    // The grid opens in a new tab and asks for the posts once it has loaded; a click is needed so the tab isn't blocked as a popup.
+    const open = Object.assign(document.createElement('button'), { textContent: 'Open grid' });
+    const dl = Object.assign(document.createElement('button'), { textContent: 'Download media.json' });
+    open.style.cssText = 'background:#ff4500;color:#fff;border:0;padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer';
+    s.after(document.createElement('br'), open, ' ', dl);
+    const gridOrigin = new URL(gridUrl).origin;
+    window.addEventListener('message', (e) => {
+      if (e.origin === gridOrigin && e.data === 'savedgrid-ready') e.source.postMessage({ type: 'savedgrid-posts', ...data }, gridOrigin);
+    });
+    open.onclick = () => window.open(gridUrl + '?receive', '_blank');
+    dl.onclick = () => {
+      const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+      Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'media.json' }).click();
+    };
   }
 
   file.onchange = async () => {
