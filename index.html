@@ -170,6 +170,12 @@ let resizeT;
 window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(layout, 150); });
 
 // Where posts come from, in order: ?demo, a Reddit sign-in, or a local media.json from the console script.
+// keep: survives closing the browser, so the grid is there next time on this computer.
+const keep = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
 const store = {
   get(k) { try { return JSON.parse(sessionStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch {} },
@@ -230,7 +236,11 @@ csvInput.onchange = async () => {
   store.set('sg_ids', ids);
   loadFromReddit('csv');
 };
-document.getElementById('signout').onclick = () => { ['sg_token', 'sg_ids', 'sg_posts'].forEach(store.del); location.href = redirectUri; };
+document.getElementById('signout').onclick = () => {
+  if (!confirm('Remove your saved posts from this computer and start over?')) return;
+  ['sg_token', 'sg_ids'].forEach(store.del); keep.del('sg_posts');
+  location.href = redirectUri;
+};
 if (clientId) landing.classList.add('has-signin');
 else { document.getElementById('loadcsv').hidden = true; document.getElementById('signout').textContent = 'Start over'; }
 
@@ -245,11 +255,11 @@ function cleanPosts(list) {
   })).filter((p) => p.items.length);
 }
 
-function showPosts(list) {
+function showPosts(list, { fresh = true } = {}) {
   landing.classList.remove('show');
   resetGrid();
-  posts = cleanPosts(list);
-  store.set('sg_posts', posts);
+  posts = fresh ? mergePosts(cleanPosts(list), keep.get('sg_posts')) : cleanPosts(list);
+  keep.set('sg_posts', posts);
   document.getElementById('menu').classList.add('show');
   if (posts.length) layout(); else status.textContent = 'No pictures or videos found.';
 }
@@ -286,8 +296,8 @@ if (callback) {
   });
   if (window.opener) for (const o of ['https://www.reddit.com', 'https://old.reddit.com', 'https://new.reddit.com']) window.opener.postMessage('savedgrid-ready', o);
   else status.textContent = 'Open this page with the Saved Grid bookmark on reddit.com.';
-} else if (store.get('sg_posts')) {
-  showPosts(store.get('sg_posts'));
+} else if (keep.get('sg_posts')) {
+  showPosts(keep.get('sg_posts'), { fresh: false });
 } else if (validToken()) {
   loadFromReddit(store.get('sg_mode') || 'saved');
 } else {
