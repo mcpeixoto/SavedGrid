@@ -39,3 +39,10 @@ test('gifv becomes mp4', () => {
 test('text post is skipped', () => {
   assert.strictEqual(extractMedia({ ...base, url: 'https://www.reddit.com/r/x/comments/a/t/', is_self: true }), null);
 });
+
+test('mergePosts keeps newer first and older extras after', () => {
+  const { mergePosts } = require('./extract');
+  const m = mergePosts([{ id: 'b' }, { id: 'a' }], [{ id: 'a' }, { id: 'z' }]);
+  assert.deepStrictEqual(m.map((p) => p.id), ['b', 'a', 'z']);
+  assert.deepStrictEqual(mergePosts([{ id: 'x' }], null).map((p) => p.id), ['x']);
+});

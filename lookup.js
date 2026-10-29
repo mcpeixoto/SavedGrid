@@ -23,9 +23,10 @@
     throw new Error('Gave up after rate limits');
   }
 
-  function save(things) {
-    const data = { generated: new Date().toISOString(), posts: things.filter((t) => t.kind === 't3').map((t) => extractMedia(t.data)).filter(Boolean) };
-    s.textContent = `Done: ${data.posts.length} posts with media (of ${things.length}).`;
+  function save(things, source) {
+    const data = { generated: new Date().toISOString(), source, total: things.length, posts: things.filter((t) => t.kind === 't3').map((t) => extractMedia(t.data)).filter(Boolean) };
+    s.textContent = `Done: ${data.posts.length} posts with media (of ${things.length}).` +
+      (source === 'live' && things.length >= 1000 ? ' Reddit stops around 1000; pick your export CSV to get the rest.' : '');
     // The grid opens in a new tab and asks for the posts once it has loaded; a click is needed so the tab isn't blocked as a popup.
     const open = Object.assign(document.createElement('button'), { textContent: 'Open grid' });
     const dl = Object.assign(document.createElement('button'), { textContent: 'Download media.json' });
@@ -55,7 +56,7 @@
         for (const id of batch) if (byId.has(id)) things.push(byId.get(id)); // keep export order
         await sleep(1000);
       }
-      save(things);
+      save(things, 'csv');
     } catch (e) { s.textContent = 'Error: ' + e.message; }
   };
 
@@ -63,16 +64,21 @@
     try {
       const me = await getJson('/api/me.json');
       const name = (me.data || me).name;
-      const things = [];
-      let after = '';
-      do {
-        s.textContent = `Fetched ${things.length} saved items…`;
-        const res = await getJson(`/user/${name}/saved.json?raw_json=1&limit=100&after=${after}`);
-        things.push(...res.data.children);
-        after = res.data.after || '';
-        await sleep(1000);
-      } while (after);
-      save(things);
+      const things = [], seen = new Set();
+      // Posts only (saved comments would use up Reddit's ~1000-item cap). If the cap is hit, a second
+      // sort order sometimes surfaces older saves; duplicates are dropped.
+      for (const sort of ['new', 'top']) {
+        let after = '';
+        do {
+          s.textContent = `Fetched ${things.length} saved posts…`;
+          const res = await getJson(`/user/${name}/saved.json?raw_json=1&limit=100&type=links&sort=${sort}&after=${after}`);
+          for (const c of res.data.children) if (!seen.has(c.data.name)) { seen.add(c.data.name); things.push(c); }
+          after = res.data.after || '';
+          await sleep(1000);
+        } while (after);
+        if (things.length < 1000) break;
+      }
+      save(things, 'live');
     } catch (e) { s.textContent = 'Error: ' + e.message; }
   };
 })();

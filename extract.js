@@ -43,6 +43,12 @@
     return poster ? { ...base, items: [poster] } : null;
   }
 
-  if (typeof module !== 'undefined') module.exports = { extractMedia };
-  else root.extractMedia = extractMedia;
+  // Newer results first, then anything from earlier runs that isn't in them, so saves older than Reddit's cap stay around.
+  function mergePosts(newer, older) {
+    const ids = new Set(newer.map((p) => p.id));
+    return newer.concat((older || []).filter((p) => !ids.has(p.id)));
+  }
+
+  if (typeof module !== 'undefined') module.exports = { extractMedia, mergePosts };
+  else { root.extractMedia = extractMedia; root.mergePosts = mergePosts; }
 })(this);
