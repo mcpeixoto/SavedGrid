@@ -40,6 +40,37 @@ test('text post is skipped', () => {
   assert.strictEqual(extractMedia({ ...base, url: 'https://www.reddit.com/r/x/comments/a/t/', is_self: true }), null);
 });
 
+test('embedded video named after its clip plays the mp4, keeping the player as fallback', () => {
+  const m = extractMedia({
+    ...base, url: 'https://www.example-clips.com/watch/bravecalmotter',
+    secure_media: { type: 'example-clips.com', oembed: { type: 'video', width: 640, height: 1138, thumbnail_url: 'https://media.example-clips.com/BraveCalmOtter-poster.jpg',
+      html: '&lt;iframe src="https://www.example-clips.com/ifr/bravecalmotter" frameborder="0"&gt;&lt;/iframe&gt;' } },
+  });
+  assert.deepStrictEqual(m.items[0], { type: 'video', src: 'https://media.example-clips.com/BraveCalmOtter.mp4', poster: 'https://media.example-clips.com/BraveCalmOtter-poster.jpg',
+    embed: 'https://www.example-clips.com/ifr/bravecalmotter', w: 640, h: 1138 });
+});
+
+test('embedded video without a named thumbnail uses the player', () => {
+  const m = extractMedia({
+    ...base, url: 'https://www.example-clips.com/watch/bravecalmotter',
+    secure_media_embed: { content: '<iframe src="https://www.example-clips.com/ifr/bravecalmotter?a=1&amp;b=2"></iframe>' },
+    secure_media: { oembed: { type: 'video', thumbnail_url: 'https://i.example-clips.com/i/bravecalmotter.jpg' } },
+    preview: { images: [{ source: { url: 'https://preview.redd.it/p.jpg', width: 3, height: 4 } }] },
+  });
+  assert.strictEqual(m.items[0].type, 'embed');
+  assert.strictEqual(m.items[0].src, 'https://www.example-clips.com/ifr/bravecalmotter?a=1&b=2');
+  assert.strictEqual(m.items[0].poster, 'https://preview.redd.it/p.jpg');
+  assert.deepStrictEqual([m.items[0].w, m.items[0].h], [3, 4]);
+});
+
+test('reddit-hosted preview video still wins over the embedded player', () => {
+  const m = extractMedia({
+    ...base, secure_media: { oembed: { type: 'video', html: '<iframe src="https://x.example/ifr/a"></iframe>' } },
+    preview: { reddit_video_preview: { fallback_url: 'https://v.redd.it/q/DASH_480.mp4' } },
+  });
+  assert.strictEqual(m.items[0].src, 'https://v.redd.it/q/DASH_480.mp4');
+});
+
 test('mergePosts keeps newer first and older extras after', () => {
   const { mergePosts } = require('./extract');
   const m = mergePosts([{ id: 'b' }, { id: 'a' }], [{ id: 'a' }, { id: 'z' }]);
