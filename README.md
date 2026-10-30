@@ -16,13 +16,22 @@ No titles, no comments, no feed. Just the media you saved, laid out in a masonry
 
 ## Features
 
-- **Masonry grid** that keeps each image's real shape, newest saves at the top
-- **Videos autoplay muted and loop**, but only while on screen, so hundreds of tiles stay smooth
-- **Galleries** show a `1/3` badge; open one and step through with ← →
+- **Four ways to watch**:
+  - **Grid**: a masonry grid that keeps each image's real shape, newest saves at the top
+  - **Auto-scroll**: the grid drifts down on its own at the speed you pick, then starts over
+  - **Wall**: a full screen of tiles that keep swapping to new media with fade, zoom, flip, slide, blur or iris animations
+  - **Slideshow**: one picture or video at a time, full screen, over a blurred backdrop
+- **Everything is configurable** from the ⚙ Settings panel: speed, how often and how many tiles change, animation style and length, a slow zoom on pictures, columns, gap, order (newest, oldest, shuffle) and pictures-only or videos-only. Settings are remembered on your computer
+- **Videos autoplay muted and loop**, and restart themselves if the browser pauses them
+- **Galleries** show each picture as its own tile (or just the first, if you prefer); open one and step through with ← →
 - **Lightbox** with sound on for videos and a link back to the original post
 - **Gets past Reddit's 1000-item cap** by reading your full saved list from Reddit's data export
 - **Private by design**: no server, no account, no tracking. Your data never leaves your computer
 - **Zero dependencies**: one HTML file, two small scripts, nothing to install or build
+
+| Wall mode | Settings |
+|---|---|
+| ![Wall mode](docs/wall.jpg) | ![Settings panel](docs/settings.jpg) |
 
 | Lightbox | Phone |
 |---|---|
@@ -82,6 +91,18 @@ python3 -m http.server 8734
 
 Open http://localhost:8734. Click a tile to open it; ← → move between items, Esc closes.
 
+### Keyboard
+
+| Key | Does |
+|---|---|
+| `Space` | Pause or resume auto-scroll, wall and slideshow |
+| `M` | Next mode |
+| `F` | Full screen |
+| `S` | Settings |
+| `Esc` | Close the lightbox or settings |
+
+Add `?mode=wall` (or `scroll`, `slideshow`, `grid`) to the address to open in that mode without changing your saved settings.
+
 ## How it works
 
 ```
@@ -92,7 +113,8 @@ saved_posts.csv ──► lookup.js (in your reddit.com tab) ──► media.jso
 - [`extract.js`](extract.js) turns one Reddit post into the media to show: images, Reddit-hosted videos, galleries, crossposts and imgur `.gifv` links. Text posts are skipped.
 - [`lookup.js`](lookup.js) is the panel the bookmark opens on reddit.com: it fetches your posts and sends them to the grid (or saves `media.json`).
 - [`reddit.js`](reddit.js) handles Reddit sign-in and fetching for the online version.
-- [`index.html`](index.html) is the grid, lightbox and sign-in page.
+- [`view.js`](view.js) holds the settings, builds the list of tiles (gallery splitting, filters, order) and picks what the wall shows next.
+- [`index.html`](index.html) is the grid, the play modes, the settings panel, the lightbox and the landing page.
 
 ## Limitations
 
@@ -102,7 +124,7 @@ saved_posts.csv ──► lookup.js (in your reddit.com tab) ──► media.jso
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started. Good first contributions: support for another media host, keyboard shortcuts, or filters (images only, videos only, by subreddit).
+Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started. Good first contributions: support for another media host, a new wall animation, or a filter by subreddit.
 
 ## Support
 
