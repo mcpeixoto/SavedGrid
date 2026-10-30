@@ -195,21 +195,44 @@ function mediaEl(item, { autoplay }) {
     else { v.src = item.src; v.controls = true; v.autoplay = true; }
     return v;
   }
-  return el('img', { src: item.src, loading: 'lazy', decoding: 'async' });
+  if (autoplay) { const img = el('img', { decoding: 'async' }); img.dataset.src = item.src; return img; } // loaded by imageObs
+  return el('img', { src: item.src, decoding: 'async' });
 }
 
-// Grid videos only load and play while near the viewport, so hundreds of tiles stay cheap.
+// Grid media only stay loaded near the viewport and are let go once far away, so memory and the browser's
+// video players stay flat however long auto-scroll runs. Tiles keep their size, so nothing shifts.
 const videoObs = new IntersectionObserver((entries) => {
   for (const e of entries) {
     const v = e.target;
     v.dataset.vis = e.isIntersecting ? '1' : '';
-    if (e.isIntersecting) { if (!v.src) v.src = v.dataset.src; v.play().catch(() => {}); }
-    else v.pause();
+    if (e.isIntersecting) { if (!v.getAttribute('src')) v.src = v.dataset.src; v.play().catch(() => {}); }
+    else if (v.getAttribute('src')) { v.pause(); v.removeAttribute('src'); v.load(); }
   }
-}, { rootMargin: '300px' });
+}, { rootMargin: '600px' });
+const imageObs = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    const img = e.target;
+    if (e.isIntersecting) { if (!img.getAttribute('src')) img.src = img.dataset.src; }
+    else img.removeAttribute('src');
+  }
+}, { rootMargin: '1500px' });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) document.querySelectorAll('#grid video').forEach((v) => (v.dataset.vis === '1' || v.closest('.layer')) && v.play().catch(() => {}));
+  syncWakeLock();
 });
+
+// Keeps the screen on while a mode is playing, so a TV or laptop doesn't go to sleep mid-show.
+let wakeLock = null;
+async function syncWakeLock() {
+  const want = settings.mode !== 'grid' && !paused && posts.length > 0 && !document.hidden;
+  if (want && !wakeLock && navigator.wakeLock) {
+    wakeLock = 'pending';
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } catch { wakeLock = null; }
+  } else if (!want && wakeLock && wakeLock !== 'pending') { wakeLock.release(); wakeLock = null; }
+}
 
 const isWall = () => settings.mode === 'wall' || settings.mode === 'slideshow';
 
@@ -223,6 +246,7 @@ function render() {
   status.hidden = isWall();
   if (!tiles.length) { status.hidden = false; status.textContent = posts.length ? 'Nothing matches this filter. Change "Show" in settings.' : ''; return; }
   if (isWall()) { window.scrollTo(0, 0); buildWall(); } else layout(true);
+  syncWakeLock();
 }
 
 // Masonry grid (also used by auto-scroll)
@@ -249,7 +273,7 @@ function renderMore(count = BATCH) {
     tile.onclick = () => openLb(t.p, t.i);
     const col = cols.reduce((a, b) => (b.h < a.h ? b : a)); // shortest column keeps the top of the list near the top
     col.append(tile); col.h += ratio;
-    if (m.tagName === 'VIDEO') videoObs.observe(m);
+    (m.tagName === 'VIDEO' ? videoObs : imageObs).observe(m);
   }
   status.textContent = shown < tiles.length ? '' : tiles.length === posts.length ? `${posts.length} saved posts` : `${tiles.length} pictures and videos from ${posts.length} saved posts`;
 }
@@ -258,22 +282,29 @@ new IntersectionObserver((e) => { if (e[0].isIntersecting && shown < tiles.lengt
   .observe(status);
 
 // Auto-scroll: drifts down at the chosen speed, waits a moment when you scroll yourself, and starts over at the end.
-let lastFrame = 0, scrollAcc = 0, holdUntil = 0;
+// It keeps its own exact position rather than nudging with scrollBy(0, 1), which some zoom levels round away to nothing.
+let lastFrame = 0, holdUntil = 0, pos = -1, restarting = false;
 function frame(t) {
-  const dt = Math.min(100, t - lastFrame); lastFrame = t;
-  if (settings.mode === 'scroll' && !paused && !lbOpen() && t > holdUntil && cols.length) {
-    scrollAcc += settings.speed * dt / 1000;
-    const px = Math.floor(scrollAcc);
-    if (px) { scrollAcc -= px; window.scrollBy(0, px); }
-    if (shown >= tiles.length && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
-      holdUntil = t + 3500;
-      setTimeout(() => { grid.style.transition = 'opacity .6s'; grid.style.opacity = 0; }, 1500);
-      setTimeout(() => { window.scrollTo(0, 0); grid.style.opacity = 1; }, 2200);
-    }
-  }
-  requestAnimationFrame(frame);
+  requestAnimationFrame(frame); // asked for first, so no single bad frame can ever end the loop
+  const dt = Math.min(250, t - lastFrame); lastFrame = t;
+  if (settings.mode !== 'scroll' || paused || lbOpen() || restarting || !cols.length || t < holdUntil) { pos = -1; return; }
+  // Rendering more here as well as from the observer: the observer only fires when the bottom crosses its margin.
+  if (shown < tiles.length && status.getBoundingClientRect().top < window.innerHeight + 1500) renderMore();
+  const max = document.documentElement.scrollHeight - window.innerHeight;
+  if (max <= 0) return;
+  if (pos < 0 || Math.abs(window.scrollY - pos) > 4) pos = window.scrollY; // picks up a manual scroll
+  pos = Math.min(max, pos + settings.speed * dt / 1000);
+  window.scrollTo(0, pos);
+  if (shown >= tiles.length && pos >= max - 1) startOver();
 }
 requestAnimationFrame(frame);
+function startOver() {
+  restarting = true;
+  grid.style.transition = 'opacity .6s';
+  setTimeout(() => { grid.style.opacity = 0; }, 1500);
+  setTimeout(() => { window.scrollTo(0, 0); grid.style.opacity = 1; }, 2200);
+  setTimeout(() => { restarting = false; }, 3000);
+}
 const holdScroll = () => { holdUntil = performance.now() + 2500; };
 window.addEventListener('wheel', holdScroll, { passive: true });
 window.addEventListener('touchstart', holdScroll, { passive: true });
@@ -401,6 +432,7 @@ function syncForm() {
   for (const o of form.querySelectorAll('[data-out]')) o.textContent = fmt[o.dataset.out](settings[o.dataset.out]);
   pauseBtn.textContent = paused ? '▶' : '⏸';
   pauseBtn.hidden = settings.mode === 'grid';
+  syncWakeLock();
 }
 function setSetting(k, v) {
   if (settings[k] === v) return;
