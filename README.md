@@ -24,7 +24,9 @@ No titles, no comments, no feed. Just the media you saved, laid out in a masonry
 - **Everything is configurable** from the ⚙ Settings panel: speed, how often and how many tiles change, animation style and length, a slow zoom on pictures, columns, gap, order (newest, oldest, shuffle) and pictures-only or videos-only. Settings are remembered on your computer
 - **Videos autoplay muted and loop**, and restart themselves if the browser pauses them
 - **Built for hours on a TV**: the screen stays awake while a mode plays, and media far off screen are unloaded so memory stays flat however long it runs
-- **Galleries** show each picture as its own tile (or just the first, if you prefer); open one and step through with ← →
+- **Galleries** slide through their pictures inside one tile, with ‹ › arrows to step by hand (or show each picture as its own tile); in the lightbox, ← → step through them
+- **Videos from other sites** play too: straight from the source when the clip can be found, otherwise in that site's own embedded player
+- **Slideshow arrows**: ‹ › on screen or ← → on the keyboard go back and forward, and going back retraces what was shown
 - **Lightbox** with sound on for videos and a link back to the original post
 - **Gets past Reddit's 1000-item cap** by reading your full saved list from Reddit's data export
 - **Private by design**: no server, no account, no tracking. Your data never leaves your computer
@@ -97,6 +99,7 @@ Open http://localhost:8734. Click a tile to open it; ← → move between items,
 | Key | Does |
 |---|---|
 | `Space` | Pause or resume auto-scroll, wall and slideshow |
+| `←` `→` | Previous / next in the slideshow |
 | `M` | Next mode |
 | `F` | Full screen |
 | `S` | Settings |
@@ -119,7 +122,7 @@ saved_posts.csv ──► lookup.js (in your reddit.com tab) ──► media.jso
 
 ## Limitations
 
-- Media from hosts that block embedding, or need their own API key (for example some video sites), falls back to the post's thumbnail or is skipped.
+- Media from hosts that block embedding falls back to the post's thumbnail or is skipped.
 - Reddit videos play without sound in the grid; open one to hear it.
 - Deleted or removed posts can't be looked up and are left out.
 

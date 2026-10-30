@@ -69,6 +69,18 @@
   .a-slide-u { animation-name: a-slide-u; } @keyframes a-slide-u { from { transform: translateY(100%); } }
   .a-slide-d { animation-name: a-slide-d; } @keyframes a-slide-d { from { transform: translateY(-100%); } }
   .tile { animation: a-fade .5s both; }
+  .tile iframe, .layer iframe { display: block; width: 100%; height: 100%; border: 0; pointer-events: none; }
+  #lb .media iframe { display: block; border: 0; width: min(96vw, calc(88vh * var(--r, 1.78))); aspect-ratio: var(--r, 1.78); }
+  /* Gallery tiles: pictures slide by on their own, with arrows to step through by hand */
+  .nav { position: absolute; top: 50%; z-index: 2; transform: translateY(-50%); width: 38px; height: 38px; border-radius: 50%; border: 0;
+    background: rgba(0,0,0,.55); color: #fff; font: 24px/1 system-ui, sans-serif; cursor: pointer; opacity: 0; transition: opacity .2s; }
+  .nav.l { left: 8px; } .nav.r { right: 8px; }
+  .tile:hover .nav, .cell:hover .nav { opacity: .9; }
+  @media (hover: none) { .nav { opacity: .75; } }
+  body.idle .nav { opacity: 0; }
+  .dots { position: absolute; bottom: 7px; left: 0; right: 0; z-index: 2; display: flex; justify-content: center; gap: 4px; pointer-events: none; }
+  .dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.45); box-shadow: 0 0 2px #0008; }
+  .dots i.on { background: #fff; }
 
   /* Settings drawer */
   #settings { position: fixed; top: 0; right: 0; bottom: 0; width: min(320px, 100vw); z-index: 8; background: rgba(18,18,21,.97); border-left: 1px solid #2c2c33;
@@ -139,11 +151,13 @@
   <div class="field">Order
     <div class="seg three" data-key="order"><button type="button" value="newest">Newest</button><button type="button" value="oldest">Oldest</button><button type="button" value="shuffle">Shuffle</button></div>
   </div>
-  <label class="check"><input type="checkbox" name="split"> Show each gallery picture separately</label>
+  <label class="check only grid scroll"><input type="checkbox" name="split"> Show each gallery picture as its own tile</label>
+  <label class="check only grid scroll"><input type="checkbox" name="galleryAuto"> Slide through gallery pictures on their own</label>
+  <label class="only grid scroll">Next gallery picture every <b data-out="galleryInterval"></b><input type="range" name="galleryInterval" min="1" max="30" step="1"></label>
   <label>Columns <b data-out="columns"></b><input type="range" name="columns" min="0" max="10" step="1"></label>
   <label>Gap <b data-out="gap"></b><input type="range" name="gap" min="0" max="24" step="1"></label>
   <label class="check"><input type="checkbox" name="hideUi"> Hide controls when the mouse is still</label>
-  <p class="keys"><kbd>Space</kbd> pause · <kbd>M</kbd> next mode · <kbd>F</kbd> full screen · <kbd>S</kbd> settings · <kbd>Esc</kbd> close</p>
+  <p class="keys"><kbd>Space</kbd> pause · <kbd>←</kbd> <kbd>→</kbd> previous / next in slideshow · <kbd>M</kbd> next mode · <kbd>F</kbd> full screen · <kbd>S</kbd> settings · <kbd>Esc</kbd> close</p>
   <button type="button" class="btn" id="resetset">Reset settings</button>
   <button type="button" class="btn" id="loadcsv">Load export CSV</button>
   <button type="button" class="btn" id="signout">Sign out</button>
@@ -188,15 +202,35 @@ function keepPlaying(v) {
 }
 
 function mediaEl(item, { autoplay }) {
+  if (item.type === 'embed') {
+    const f = el('iframe', { allow: 'autoplay; fullscreen; encrypted-media; picture-in-picture', referrerPolicy: 'no-referrer' });
+    f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation');
+    f.dataset.src = item.src;
+    f.style.setProperty('--r', item.w && item.h ? item.w / item.h : 16 / 9);
+    if (!autoplay) f.src = item.src;
+    return f;
+  }
   if (item.type === 'video') {
     const v = el('video', { muted: autoplay, loop: true, playsInline: true, preload: autoplay ? 'none' : 'auto', poster: item.poster || '' });
     v.dataset.src = item.src;
     if (autoplay) keepPlaying(v);
     else { v.src = item.src; v.controls = true; v.autoplay = true; }
+    if (item.embed) fallBackToPlayer(v, item, autoplay);
     return v;
   }
   if (autoplay) { const img = el('img', { decoding: 'async' }); img.dataset.src = item.src; return img; } // loaded by imageObs
   return el('img', { src: item.src, decoding: 'async' });
+}
+
+// A clip that won't load as a plain video is swapped for the site's own player.
+function fallBackToPlayer(v, item, autoplay) {
+  v.addEventListener('error', () => {
+    if (!v.isConnected || !v.getAttribute('src')) return;
+    const f = mediaEl({ type: 'embed', src: item.embed, w: item.w, h: item.h }, { autoplay });
+    unwatch(v);
+    v.replaceWith(f);
+    if (autoplay) { if (v.closest('.layer') || v.dataset.vis === '1') f.src = f.dataset.src; watch(f); }
+  });
 }
 
 // Grid media only stay loaded near the viewport and are let go once far away, so memory and the browser's
@@ -209,6 +243,18 @@ const videoObs = new IntersectionObserver((entries) => {
     else if (v.getAttribute('src')) { v.pause(); v.removeAttribute('src'); v.load(); }
   }
 }, { rootMargin: '600px' });
+const frameObs = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    const f = e.target;
+    if (e.isIntersecting) { if (f.getAttribute('src') !== f.dataset.src) f.src = f.dataset.src; }
+    else if (f.getAttribute('src')) f.removeAttribute('src');
+  }
+}, { rootMargin: '300px' });
+const watch = (m) => ({ VIDEO: videoObs, IFRAME: frameObs, IMG: imageObs })[m.tagName].observe(m);
+const unwatch = (m) => ({ VIDEO: videoObs, IFRAME: frameObs, IMG: imageObs })[m.tagName].unobserve(m);
+const release = (m) => { unwatch(m); if (m.tagName === 'VIDEO') { m.removeAttribute('src'); m.load(); } else m.removeAttribute('src'); };
+// Loads a grid media element right away instead of waiting for its observer, for pictures swapped into view.
+const loadNow = (m) => { if (m.dataset.src) m.src = m.dataset.src; if (m.tagName === 'VIDEO') { m.dataset.vis = '1'; m.play().catch(() => {}); } };
 const imageObs = new IntersectionObserver((entries) => {
   for (const e of entries) {
     const img = e.target;
@@ -234,6 +280,8 @@ async function syncWakeLock() {
   } else if (!want && wakeLock && wakeLock !== 'pending') { wakeLock.release(); wakeLock = null; }
 }
 
+function forgetTiles() { for (const o of [videoObs, frameObs, imageObs, galleryObs]) o.disconnect(); shownGalleries.clear(); }
+
 const isWall = () => settings.mode === 'wall' || settings.mode === 'slideshow';
 
 // Rebuilds whatever the current mode shows from scratch.
@@ -241,8 +289,8 @@ function render() {
   document.documentElement.style.setProperty('--gap', settings.gap + 'px');
   if (wall) { clearTimeout(wall.timer); wall = null; }
   grid.innerHTML = ''; grid.className = ''; grid.style.gridTemplateColumns = grid.style.gridTemplateRows = '';
-  cols = []; shown = 0;
-  tiles = View.buildTiles(posts, settings);
+  cols = []; shown = 0; forgetTiles();
+  tiles = View.buildTiles(posts, isWall() ? { ...settings, split: true } : settings);
   status.hidden = isWall();
   if (!tiles.length) { status.hidden = false; status.textContent = posts.length ? 'Nothing matches this filter. Change "Show" in settings.' : ''; return; }
   if (isWall()) { window.scrollTo(0, 0); buildWall(); } else layout(true);
@@ -254,7 +302,7 @@ function layout(force) {
   if (isWall()) return render();
   const n = View.columnCount(window.innerWidth, settings.columns);
   if (!force && cols.length === n) return;
-  grid.innerHTML = ''; cols = [];
+  grid.innerHTML = ''; cols = []; forgetTiles();
   for (let i = 0; i < n; i++) { const c = el('div', { className: 'col' }); c.h = 0; grid.append(c); cols.push(c); }
   const upTo = shown; shown = 0; renderMore(Math.max(upTo, BATCH));
 }
@@ -268,15 +316,64 @@ function renderMore(count = BATCH) {
     const tile = el('div', { className: 'tile' });
     tile.style.aspectRatio = `1 / ${ratio}`;
     const m = mediaEl(item, { autoplay: true });
-    tile.append(m);
-    if (t.of > 1) tile.append(el('span', { className: 'badge', textContent: `${settings.split ? t.i + 1 : 1}/${t.of}` }));
-    tile.onclick = () => openLb(t.p, t.i);
+    const list = settings.split ? [] : View.galleryOf(posts[t.p], settings.filter);
+    if (list.length > 1) makeGallery(tile, t.p, list, m);
+    else {
+      tile.append(m);
+      if (t.of > 1) tile.append(el('span', { className: 'badge', textContent: `${t.i + 1}/${t.of}` }));
+    }
+    tile.onclick = () => openLb(t.p, tile.gallery ? tile.gallery.list[tile.gallery.k] : t.i);
     const col = cols.reduce((a, b) => (b.h < a.h ? b : a)); // shortest column keeps the top of the list near the top
     col.append(tile); col.h += ratio;
-    (m.tagName === 'VIDEO' ? videoObs : imageObs).observe(m);
+    watch(m);
   }
   status.textContent = shown < tiles.length ? '' : tiles.length === posts.length ? `${posts.length} saved posts` : `${tiles.length} pictures and videos from ${posts.length} saved posts`;
 }
+
+// Gallery tiles: one post's pictures in one tile, sliding to the next every few seconds while on screen.
+const shownGalleries = new Set();
+const galleryObs = new IntersectionObserver((entries) => {
+  for (const e of entries) e.isIntersecting ? shownGalleries.add(e.target) : shownGalleries.delete(e.target);
+});
+
+function makeGallery(tile, p, list, first) {
+  const layer = el('div', { className: 'layer' });
+  layer.append(first);
+  const prev = el('button', { type: 'button', className: 'nav l', textContent: '‹', title: 'Previous picture' });
+  const next = el('button', { type: 'button', className: 'nav r', textContent: '›', title: 'Next picture' });
+  const dots = el('div', { className: 'dots' });
+  list.forEach((_, k) => dots.append(el('i', { className: k ? '' : 'on' })));
+  prev.onclick = (e) => { e.stopPropagation(); galleryStep(tile, -1); };
+  next.onclick = (e) => { e.stopPropagation(); galleryStep(tile, 1); };
+  tile.append(layer, prev, next, dots);
+  tile.gallery = { p, list, k: 0, dots, due: performance.now() + settings.galleryInterval * 1000 + rnd(0, 2000) };
+  galleryObs.observe(tile);
+}
+
+async function galleryStep(tile, d) {
+  const g = tile.gallery;
+  if (g.busy) return;
+  g.busy = true;
+  g.k = (g.k + d + g.list.length) % g.list.length;
+  [...g.dots.children].forEach((dot, k) => dot.classList.toggle('on', k === g.k));
+  const m = mediaEl(posts[g.p].items[g.list[g.k]], { autoplay: true });
+  const layer = el('div', { className: 'layer a-slide-' + (d > 0 ? 'l' : 'r') });
+  layer.style.setProperty('--anim', '550ms');
+  layer.append(m);
+  loadNow(m);
+  await ready(m);
+  const old = [...tile.querySelectorAll('.layer')];
+  tile.insertBefore(layer, tile.querySelector('.nav'));
+  watch(m);
+  setTimeout(() => { old.forEach((o) => { o.querySelectorAll('img, video, iframe').forEach(release); o.remove(); }); g.busy = false; }, 600);
+  g.due = performance.now() + settings.galleryInterval * 1000;
+}
+
+setInterval(() => {
+  if (!settings.galleryAuto || paused || lbOpen() || document.hidden || isWall()) return;
+  const now = performance.now();
+  for (const tile of shownGalleries) if (now >= tile.gallery.due && tile.isConnected) galleryStep(tile, 1);
+}, 500);
 
 new IntersectionObserver((e) => { if (e[0].isIntersecting && shown < tiles.length) renderMore(); }, { rootMargin: '1200px' })
   .observe(status);
@@ -323,7 +420,13 @@ function buildWall() {
   wall = { cells: [], deck: View.makeDeck(tiles.length) };
   for (let i = 0; i < Math.min(c * r, tiles.length); i++) {
     const cell = el('div', { className: 'cell' });
+    cell.hist = []; cell.hp = -1;
     cell.onclick = () => { const t = tiles[cell.idx]; if (t) openLb(t.p, t.i); };
+    const prev = el('button', { type: 'button', className: 'nav l', textContent: '‹', title: 'Previous (←)' });
+    const next = el('button', { type: 'button', className: 'nav r', textContent: '›', title: 'Next (→)' });
+    prev.onclick = (e) => { e.stopPropagation(); stepCell(cell, -1); };
+    next.onclick = (e) => { e.stopPropagation(); stepCell(cell, 1); };
+    cell.append(prev, next);
     grid.append(cell); wall.cells.push(cell);
     setTimeout(() => swapCell(cell, 'fade'), i * 60); // first fill cascades in
   }
@@ -331,9 +434,11 @@ function buildWall() {
 }
 
 function wallMedia(item) {
+  if (item.type === 'embed') { const f = mediaEl(item, { autoplay: true }); f.src = item.src; return f; }
   if (item.type === 'video') {
     const v = el('video', { muted: true, loop: true, playsInline: true, autoplay: true, preload: 'auto', poster: item.poster || '', src: item.src });
     keepPlaying(v);
+    if (item.embed) fallBackToPlayer(v, item, true);
     return v;
   }
   return el('img', { src: item.src, decoding: 'async' });
@@ -341,18 +446,27 @@ function wallMedia(item) {
 
 // Resolves true once the media can be shown without a blank flash, false if it fails or takes too long.
 function ready(m) {
-  const loaded = m.tagName === 'VIDEO'
-    ? new Promise((res) => { m.addEventListener('loadeddata', () => res(true), { once: true }); m.addEventListener('error', () => res(false), { once: true }); })
+  const loaded = m.tagName === 'IFRAME' ? new Promise((res) => m.addEventListener('load', () => res(true), { once: true }))
+    : m.tagName === 'VIDEO' ? new Promise((res) => { m.addEventListener('loadeddata', () => res(true), { once: true }); m.addEventListener('error', () => res(false), { once: true }); })
     : m.decode().then(() => true, () => false);
   return Promise.race([loaded, new Promise((res) => setTimeout(() => res(false), 6000))]);
 }
 
-async function swapCell(cell, anim) {
+// Steps a cell by hand, and gives the slideshow a full interval before it moves on by itself.
+function stepCell(cell, d) {
+  swapCell(cell, d > 0 ? 'slide-l' : 'slide-r', d);
+  if (settings.mode === 'slideshow') scheduleWall();
+}
+
+// Each cell remembers what it showed, so stepping back retraces it and stepping forward again replays it.
+async function swapCell(cell, anim, dir = 1) {
   if (cell.busy || !wall) return;
   cell.busy = true;
   const w = wall;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const idx = w.deck.next(new Set(w.cells.map((c) => c.idx)));
+    const fromHist = dir < 0 || cell.hp < cell.hist.length - 1;
+    if (dir < 0 && cell.hp <= 0) break;
+    const idx = fromHist ? cell.hist[cell.hp + (dir < 0 ? -1 : 1)] : w.deck.next(new Set(w.cells.map((c) => c.idx)));
     if (idx == null) break;
     const item = tiles[idx].item;
     const layer = el('div', { className: 'layer' });
@@ -360,10 +474,12 @@ async function swapCell(cell, anim) {
     const backdrop = settings.mode === 'slideshow' && (item.type === 'image' ? item.src : item.poster);
     if (backdrop) layer.append(el('img', { className: 'backdrop', src: backdrop }));
     layer.append(media);
-    if (!(await ready(media))) { media.removeAttribute('src'); continue; }
+    if (!(await ready(media))) { media.removeAttribute('src'); if (fromHist) break; continue; }
     if (w !== wall) return; // the wall was rebuilt meanwhile
     let name = anim || (settings.animation === 'random' ? ANIMS[Math.floor(Math.random() * ANIMS.length)] : settings.animation);
     if (name === 'slide') name = 'slide-' + 'lrud'[Math.floor(Math.random() * 4)];
+    if (fromHist) cell.hp += dir < 0 ? -1 : 1;
+    else { cell.hist.push(idx); if (cell.hist.length > 100) cell.hist.shift(); cell.hp = cell.hist.length - 1; }
     layer.classList.add('a-' + name);
     layer.style.setProperty('--anim', settings.animMs + 'ms');
     if (settings.kenburns && item.type === 'image') {
@@ -373,8 +489,8 @@ async function swapCell(cell, anim) {
       layer.style.setProperty('--ky', rnd(-4, 4).toFixed(1) + '%');
     }
     cell.idx = idx;
-    const old = [...cell.children];
-    cell.append(layer);
+    const old = [...cell.querySelectorAll('.layer')];
+    cell.insertBefore(layer, cell.querySelector('.nav'));
     setTimeout(() => old.forEach((o) => { o.querySelectorAll('video').forEach((v) => { v.removeAttribute('src'); v.load(); }); o.remove(); }), settings.animMs + 100);
     break;
   }
@@ -421,10 +537,10 @@ lb.onclick = (e) => { if (e.target === lb) closeLb(); };
 // Settings drawer. Every change is saved on this computer; layout settings rebuild the view, the rest apply live.
 const form = document.getElementById('settings'), pauseBtn = document.getElementById('pause');
 const fmt = {
-  speed: (v) => v + ' px/s', interval: (v) => v + ' s', swapCount: (v) => v,
+  speed: (v) => v + ' px/s', interval: (v) => v + ' s', galleryInterval: (v) => v + ' s', swapCount: (v) => v,
   animMs: (v) => v / 1000 + ' s', columns: (v) => v || 'Auto', gap: (v) => v + ' px',
 };
-const LIVE = new Set(['speed', 'interval', 'swapCount', 'animation', 'animMs', 'kenburns', 'hideUi', 'gap']);
+const LIVE = new Set(['galleryAuto', 'galleryInterval', 'speed', 'interval', 'swapCount', 'animation', 'animMs', 'kenburns', 'hideUi', 'gap']);
 function syncForm() {
   for (const o of form.querySelectorAll('.only')) o.hidden = !o.classList.contains(settings.mode);
   for (const seg of form.querySelectorAll('.seg')) for (const b of seg.children) b.classList.toggle('on', settings[seg.dataset.key] === b.value);
@@ -473,6 +589,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'm' || e.key === 'M') setSetting('mode', View.MODES[(View.MODES.indexOf(settings.mode) + 1) % View.MODES.length]);
   else if (e.key === 'f' || e.key === 'F') toggleFs();
   else if (e.key === 's' || e.key === 'S') toggleSettings();
+  else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && settings.mode === 'slideshow' && wall) stepCell(wall.cells[0], e.key === 'ArrowRight' ? 1 : -1);
   else if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End'].includes(e.key)) holdScroll();
 });
 
@@ -566,8 +683,8 @@ function cleanPosts(list) {
   return (Array.isArray(list) ? list : []).map((p) => ({
     id: String(p.id),
     permalink: typeof p.permalink === 'string' && p.permalink.startsWith('https://www.reddit.com/') ? p.permalink : 'https://www.reddit.com/',
-    items: (p.items || []).filter((i) => (i.type === 'image' || i.type === 'video') && https(i.src))
-      .map((i) => ({ type: i.type, src: i.src, poster: https(i.poster) ? i.poster : undefined, w: +i.w || undefined, h: +i.h || undefined })),
+    items: (p.items || []).filter((i) => ['image', 'video', 'embed'].includes(i.type) && https(i.src))
+      .map((i) => ({ type: i.type, src: i.src, poster: https(i.poster) ? i.poster : undefined, embed: https(i.embed) ? i.embed : undefined, w: +i.w || undefined, h: +i.h || undefined })),
   })).filter((p) => p.items.length);
 }
 

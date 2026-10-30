@@ -4,12 +4,12 @@
   const MODES = ['grid', 'scroll', 'wall', 'slideshow'];
   const ANIMATIONS = ['random', 'fade', 'zoom', 'flip', 'slide', 'blur', 'iris'];
   const DEFAULTS = {
-    mode: 'grid', filter: 'all', order: 'newest', split: true,
+    mode: 'grid', filter: 'all', order: 'newest', split: false, galleryAuto: true, galleryInterval: 4,
     columns: 0, gap: 6, speed: 40,
     interval: 3, swapCount: 2, animation: 'random', animMs: 900, kenburns: true,
     hideUi: true,
   };
-  const RANGES = { columns: [0, 10], gap: [0, 24], speed: [5, 400], interval: [1, 30], swapCount: [1, 12], animMs: [150, 3000] };
+  const RANGES = { galleryInterval: [1, 30], columns: [0, 10], gap: [0, 24], speed: [5, 400], interval: [1, 30], swapCount: [1, 12], animMs: [150, 3000] };
   const CHOICES = { mode: MODES, filter: ['all', 'image', 'video'], order: ['newest', 'oldest', 'shuffle'], animation: ANIMATIONS };
 
   // Saved settings come from localStorage, so anything unknown or out of range falls back to the default.
@@ -33,12 +33,19 @@
     return list;
   }
 
+  // Embedded players count as videos.
+  const passes = (item, filter) => filter === 'all' || (item.type === 'embed' ? 'video' : item.type) === filter;
+
+  // Indexes of a post's items that pass the filter: what a gallery tile slides through.
+  function galleryOf(post, filter) {
+    return post.items.map((item, i) => i).filter((i) => passes(post.items[i], filter));
+  }
+
   // One tile per gallery item when split, otherwise one per post (its first item that passes the filter).
   function buildTiles(posts, { split, filter, order }, rand = Math.random) {
-    const ok = (item) => filter === 'all' || item.type === filter;
     let tiles = [];
     posts.forEach((post, p) => {
-      const items = post.items.map((item, i) => ({ p, i, item, of: post.items.length })).filter((t) => ok(t.item));
+      const items = post.items.map((item, i) => ({ p, i, item, of: post.items.length })).filter((t) => passes(t.item, filter));
       tiles.push(...(split ? items : items.slice(0, 1)));
     });
     if (order === 'oldest') tiles.reverse();
@@ -67,7 +74,7 @@
     };
   }
 
-  const api = { DEFAULTS, MODES, ANIMATIONS, RANGES, cleanSettings, buildTiles, columnCount, makeDeck };
+  const api = { DEFAULTS, MODES, ANIMATIONS, RANGES, cleanSettings, buildTiles, galleryOf, columnCount, makeDeck };
   if (typeof module !== 'undefined') module.exports = api;
   else root.View = api;
 })(this);
