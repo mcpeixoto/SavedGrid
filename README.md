@@ -23,6 +23,7 @@ No titles, no comments, no feed. Just the media you saved, laid out in a masonry
   - **Slideshow**: one picture or video at a time, full screen, over a blurred backdrop
 - **Everything is configurable** from the ⚙ Settings panel: speed, how often and how many tiles change, animation style and length, a slow zoom on pictures, columns, gap, order (newest, oldest, shuffle) and pictures-only or videos-only. Settings are remembered on your computer
 - **Videos autoplay muted and loop**, and restart themselves if the browser pauses them
+- **Built for hours on a TV**: the screen stays awake while a mode plays, and media far off screen are unloaded so memory stays flat however long it runs
 - **Galleries** show each picture as its own tile (or just the first, if you prefer); open one and step through with ← →
 - **Lightbox** with sound on for videos and a link back to the original post
 - **Gets past Reddit's 1000-item cap** by reading your full saved list from Reddit's data export
